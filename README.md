@@ -4,7 +4,7 @@
 
 YeYing-RAG 是一个基于LlamaIndex的通用rag系统。
 
-## 🤝 协作规范
+## 协作规范
 
 ### 分支管理规范
 
