@@ -14,7 +14,7 @@ git pull origin main
 git checkout -b dev-{你的昵称}-{今日日期}
 
 # 示例
-git checkout -b dev-lyz-20240226
+git checkout -b dev-lyz-20250609
 ```
 
 #### 2. 开发和提交
