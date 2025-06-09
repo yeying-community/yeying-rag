@@ -4,19 +4,7 @@
 
 YeYing-RAG 是一个基于LlamaIndex的通用rag系统。
 
-## 协作规范
-
-### 分支管理规范
-
-#### 分支命名格式
-```
-dev-{开发者昵称}-{日期}
-```
-
-**示例:**
-- `dev-lyz-20250609`
-
-### 工作流程
+## 工作流程
 
 #### 1. 创建功能分支
 ```bash
@@ -24,6 +12,9 @@ dev-{开发者昵称}-{日期}
 git checkout main
 git pull origin main
 git checkout -b dev-{你的昵称}-{今日日期}
+
+# 示例
+git checkout -b dev-lyz-20240226
 ```
 
 #### 2. 开发和提交
