@@ -1,0 +1,21 @@
+[log]
+filename="log/rag.log"
+level="INFO"
+format="%(asctime)s [%(name)s][%(process)5d] %(levelname)s: %(message)s"
+maxBytes=536870912
+backupCount=15
+
+[credential]
+enable=false
+
+[server]
+grpc_port=9501
+http_port=8841
+
+[database]
+type = "sqlite"
+name = "data/rag.db"
+host = ""
+port = 0
+user = ""
+password = ""
