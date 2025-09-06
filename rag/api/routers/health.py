@@ -1,0 +1,1 @@
+# 健康检查与依赖自检（连通 Weaviate/MinIO/LLM）
