@@ -23,17 +23,17 @@
 
 ```bash
 # 基础启动
-PYTHONPATH=. python rag/runner.py --config config/config.toml --env dev
+PYTHONPATH=. python rag/runner.py --config config/config.yaml --env dev
 
 # 指定端口启动
 PYTHONPATH=. python rag/runner.py \
-  --config config/config.toml \
+  --config config/config.yaml \
   --grpc-port 9501 \
   --http-port 8841 \
   --env dev
 
 # 启用调试模式
-PYTHONPATH=. python rag/runner.py --debug --config config/config.toml --env dev
+PYTHONPATH=. python rag/runner.py --debug --config config/config.yaml --env dev
 ```
 
 ## 停止服务
