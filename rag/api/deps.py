@@ -1,34 +1,47 @@
+# rag/api/deps.py
+# -*- coding: utf-8 -*-
+from __future__ import annotations
+
+import os
+from functools import lru_cache
 from typing import Optional
 
-from pydantic import BaseModel
 from dotenv import load_dotenv
-import os
+from pydantic import BaseModel
+from fastapi import HTTPException
 
-# 加载 .env（只加载一次）
+# ===== 只加载一次 .env =====
 load_dotenv(override=False)
 
+# ===== Settings =====
 class Settings(BaseModel):
+    # Service
     service_name: str = os.getenv("SERVICE_NAME", "yeying-rag")
     service_version: str = os.getenv("SERVICE_VERSION", "0.1.0")
     rag_env: str = os.getenv("RAG_ENV", "dev")
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
 
-    # Weaviate
+    # Feature toggle
     weaviate_enabled: bool = os.getenv("WEAVIATE_ENABLED", "false").lower() == "true"
-    weaviate_scheme: str = os.getenv("WEAVIATE_SCHEME", "http")
-    weaviate_host: str = os.getenv("WEAVIATE_HOST", "localhost")
-    weaviate_port: int = int(os.getenv("WEAVIATE_PORT", "8080"))
-    weaviate_grpc_port: int = os.getenv("WEAVIATE_GRPC_PORT", "50051")
-    weaviate_api_key: Optional[str] = os.getenv("WEAVIATE_API_KEY") or None
-
-    # MinIO
     minio_enabled: bool = os.getenv("MINIO_ENABLED", "false").lower() == "true"
-    minio_endpoint: str = os.getenv("MINIO_ENDPOINT", "localhost:9000")
-    minio_access_key: str = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-    minio_secret_key: str = os.getenv("MINIO_SECRET_KEY", "minioadmin")
-    minio_secure: bool = os.getenv("MINIO_SECURE", "false").lower() == "true"
 
-_settings = Settings()
-
+# 单例 Settings
+@lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    return _settings
+    return Settings()
+
+# ===== Datasource =====
+from rag.datasource.base import Datasource
+
+@lru_cache(maxsize=1)
+def get_datasource() -> Datasource:
+    s = get_settings()
+    ds = Datasource()
+
+    # 如果服务被禁用，可以在这里直接报错
+    if s.weaviate_enabled is False and ds.weaviate is None:
+        raise HTTPException(status_code=503, detail="Weaviate disabled (WEAVIATE_ENABLED=false)")
+    if s.minio_enabled is False and ds.minio is None:
+        raise HTTPException(status_code=503, detail="Minio disabled (MINIO_ENABLED=false)")
+
+    return ds

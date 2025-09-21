@@ -1,6 +1,7 @@
 # 创建 FastAPI、挂路由、中间件（CORS/TraceID/速率限制）、全局异常处理。
 from fastapi import FastAPI
 from rag.api.deps import get_settings
+from rag.api.routers import kb, query
 from rag.api.routers.health import router as health_router
 from rag.utils.logging import setup_logging
 
@@ -15,6 +16,8 @@ app = FastAPI(
 
 # 注册路由
 app.include_router(health_router)
+app.include_router(kb.router,     prefix="/kb",      tags=["kb"])
+app.include_router(query.router,  prefix="/query",   tags=["query"])
 
 # 根路由（可选）
 @app.get("/")
