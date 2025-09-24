@@ -15,7 +15,7 @@ import weaviate
 import weaviate.classes.config as wc
 import weaviate.classes.query as wq
 from weaviate.exceptions import UnexpectedStatusCodeError
-
+from weaviate.classes.query import Filter
 from rag.datasource.connections.weaviate_connection import WeaviateConnection
 
 
@@ -89,6 +89,41 @@ class WeaviateStore:
                 return
             raise
 
+    def ensure_collection(self, name: str, properties: Optional[list] = None) -> None:
+        """
+        主要目标是单独保证特定的collection的存在，在Datasource初始化时调用，原有_ensure_collection 管理默认的 KbDefault collection
+        确保指定的 collection 存在，如果不存在则创建
+        - name: collection 名称
+        - properties: 需要的字段定义
+        """
+        col_name = _norm_class(name)
+        try:
+            col = self.client.collections.get(col_name)
+            # 尝试补充缺失的属性
+            if properties:
+                for p in properties:
+                    try:
+                        col.config.add_property(p)
+                    except Exception:
+                        pass
+            return
+        except Exception:
+            pass
+
+        # 不存在则新建
+        props = properties or [
+            wc.Property(name="text", data_type=wc.DataType.TEXT),
+            wc.Property(name="meta", data_type=wc.DataType.TEXT),
+            wc.Property(name="memory_id", data_type=wc.DataType.TEXT),
+            wc.Property(name="app", data_type=wc.DataType.TEXT),
+        ]
+
+        self.client.collections.create(
+            name=col_name,
+            properties=props,
+            vector_config=wc.Configure.Vectors.self_provided(),
+        )
+
     # ---------- 写入 ----------
     def add_texts(
         self,
@@ -97,6 +132,7 @@ class WeaviateStore:
         metadatas: Optional[List[Dict[str, Any]]] = None,
         memory_id: Optional[str] = None,
         app: Optional[str] = None,
+        collection: Optional[str] = None,  #新增，之前没有指定集合
     ) -> List[str]:
         if not texts:
             return []
@@ -110,11 +146,20 @@ class WeaviateStore:
                 if len(v) != self.embedding_dim:
                     raise ValueError(f"第 {i} 条向量维度={len(v)} 与 EMBEDDING_DIM={self.embedding_dim} 不一致")
 
-        col = self.client.collections.get(self.collection)
+        # ✅ 改为按参数决定 collection（缺省仍用 self.collection）
+        col_name = _norm_class(collection or self.collection)
+        col = self.client.collections.get(col_name)
+
         ids: List[str] = []
         with col.batch.dynamic() as batch:
             for t, v, m in zip(texts, vectors, metadatas):
-                props = {"text": t, "meta": json.dumps(m, ensure_ascii=False)}
+                #  属性里同时写入 url/role，方便过滤删除与直接读取
+                props = {
+                    "text": t,
+                    "meta": json.dumps(m or {}, ensure_ascii=False),
+                    "url": (m or {}).get("url"),  # ✅ 新增
+                    "role": (m or {}).get("role"),  # ✅ 新增
+                }
                 if memory_id:
                     props["memory_id"] = str(memory_id)
                 if app:
@@ -163,36 +208,39 @@ class WeaviateStore:
 
     # ---------- 检索 ----------
     def search(self, query_vector: List[float], top_k: int = 8,
-               memory_id: Optional[str] = None, app: Optional[str] = None) -> List[Dict[str, Any]]:
+               collection: Optional[str] = None,
+               filters: Optional[dict] = None,  # 例如 {"memory_id": "...", "app": "..."}
+               return_meta: bool = True,) -> List[Dict[str, Any]]:
         if self.embedding_dim and len(query_vector) != self.embedding_dim:
             raise ValueError(f"查询向量维度={len(query_vector)} 与 EMBEDDING_DIM={self.embedding_dim} 不一致")
 
-        col = self.client.collections.get(self.collection)
-        flt = None
-        if memory_id:
-            flt = wq.Filter.by_property("memory_id").equal(str(memory_id))
-            if app:
-                flt = flt & wq.Filter.by_property("app").equal(str(app))
-        elif app:
-            flt = wq.Filter.by_property("app").equal(str(app))
+        # 增加传参指定查询collection
+        col_name = _norm_class(collection or self.collection)
+        col = self.client.collections.get(col_name)
+
+        # 把原来的过滤条件，集成到Filter中
+        where = None
+        if filters:
+            clauses = []
+            for k, v in filters.items():
+                clauses.append(Filter.by_property(k).equal(v))
+            where = Filter.all_of(clauses)
 
         res = col.query.near_vector(
             near_vector=query_vector,
             limit=top_k,
             return_metadata=wq.MetadataQuery(distance=True),
-            filters=flt,
+            filters=where,
         )
-        return [
-            {
-                "id": str(o.uuid),
-                "distance": o.metadata.distance,
-                "text": o.properties.get("text", ""),
-                "metadata": json.loads(o.properties.get("meta") or "{}"),
-                "memory_id": o.properties.get("memory_id"),
-                "app": o.properties.get("app"),
-            }
-            for o in (res.objects or [])
-        ]
+        hits = []
+        for o in res.objects or []:
+            props = o.properties or {}
+            # 统一转成 score (certainty 如果有, 否则 distance->score)
+            dist = getattr(o.metadata, "distance", None)
+            # 统一到 score：越大越相关
+            score = 1 / (1 + dist) if dist is not None else 0.0
+            hits.append({"properties": props, "score": score})
+        return hits
 
     def query_by_text(
         self, query: str, top_k: int = 8,
@@ -258,6 +306,22 @@ class WeaviateStore:
             except Exception:
                 pass
         return ok
+
+    # --- Delete by filter ---
+    def delete_by_filter(self, collection: str, filters: dict) -> int:
+        """
+        按过滤条件批量删除
+        """
+        col_name = _norm_class(collection or self.collection)
+        col = self.client.collections.get(col_name)
+
+        clauses = []
+        for k, v in filters.items():
+            clauses.append(Filter.by_property(k).equal(v))
+        where = Filter.all_of(clauses) if clauses else None
+
+        result = col.data.delete_many(where=where)
+        return result.get("results", {}).get("matches", 0)
 
     # ---------- 替换 ----------
     def replace_one(self, _id: str, text: str, vector: List[float],

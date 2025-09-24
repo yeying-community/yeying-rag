@@ -61,6 +61,20 @@ class Datasource:
                 conn=self.weaviate_conn,
                 embedding_dim=int(os.getenv("EMBEDDING_DIM", "0")) or None,
             )
+
+            # 确保辅助记忆的 collection 存在
+            from weaviate.classes.config import Property, DataType, Configure
+            self.weaviate.ensure_collection(
+                name=os.getenv("WEAVIATE_AUX_COLLECTION", "AuxiliaryMemory"),
+                properties=[
+                    Property(name="text", data_type=DataType.TEXT),
+                    Property(name="meta", data_type=DataType.TEXT),
+                    Property(name="memory_id", data_type=DataType.TEXT),
+                    Property(name="app", data_type=DataType.TEXT),
+                    Property(name="url", data_type=DataType.TEXT),
+                    Property(name="role", data_type=DataType.TEXT),
+                ],
+            )
         else:
             self.weaviate_conn = None
             self.weaviate = None
