@@ -48,13 +48,13 @@ class PrimaryMemory:
     ) -> Dict[str, Any]:
         """
         登记一条新的上下文消息（正文已由业务层写入 MinIO，只传 URL）
-        - uid: 基于 url+ts 的唯一 id
+        - uid: uuid唯一记录上下文
         - content_sha256: 基于 url 的 hash，用于幂等
         - 记录写入 mem_contexts
         - 计数器 bump_total
         """
         ts = ts or time.time()
-        uid = hashlib.sha256(f"{url}-{ts}".encode("utf-8")).hexdigest()[:16]
+        uid = str(uuid.uuid4())[:16]
         content_sha256 = hashlib.sha256(url.encode("utf-8")).hexdigest()
 
         row = self.ds.mem_contexts.create(
