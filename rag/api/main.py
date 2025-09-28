@@ -1,25 +1,35 @@
-# 创建 FastAPI、挂路由、中间件（CORS/TraceID/速率限制）、全局异常处理。
+# rag/api/main.py
+# -*- coding: utf-8 -*-
+"""
+FastAPI 主应用
+- 挂载 memory 路由
+- 提供健康检查
+"""
+
 from fastapi import FastAPI
 from rag.api.deps import get_settings
-from rag.api.routers import kb, query
-from rag.api.routers.health import router as health_router
-from rag.utils.logging import setup_logging
+from rag.api.routers import memory, debug
 
-settings = get_settings()
-setup_logging(settings.log_level)
 
-app = FastAPI(
-    title=settings.service_name,
-    version=settings.service_version,
-    description="YEYING-RAG · MVP",
-)
+def create_app() -> FastAPI:
+    settings = get_settings()
+    app = FastAPI(
+        title=settings.service_name,
+        version=settings.service_version,
+        docs_url="/docs",
+        redoc_url="/redoc",
+    )
 
-# 注册路由
-app.include_router(health_router)
-app.include_router(kb.router,     prefix="/kb",      tags=["kb"])
-app.include_router(query.router,  prefix="/query",   tags=["query"])
+    # 健康检查
+    @app.get("/health")
+    def health_check():
+        return {"status": "ok", "service": settings.service_name}
 
-# 根路由（可选）
-@app.get("/")
-def root():
-    return {"message": "YEYING-RAG API is running", "version": settings.service_version}
+    # 挂载路由
+    app.include_router(memory.router)
+    app.include_router(debug.router)
+
+    return app
+
+
+app = create_app()
