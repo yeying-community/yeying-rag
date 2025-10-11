@@ -1,75 +1,84 @@
-# 统一数据模型
 # rag/core/schemas.py
 # -*- coding: utf-8 -*-
-from typing import List, Dict, Any, Optional
-from pydantic import BaseModel, Field
+"""
+Pydantic 数据模型 (schemas)
+集中定义所有 API 请求 / 响应的 schema
+"""
+
+from typing import Optional, Dict, Any, List
+from pydantic import BaseModel
 
 
-# ===== KB / 向量入库 =====
-class UpsertRequest(BaseModel):
-    """上传已切分的文本片段并入库（BYOV）。"""
-    collection: Optional[str] = Field(
-        default=None, description="集合名；不传则用环境变量默认值"
-    )
-    texts: List[str] = Field(
-        ..., description="要写入的文本片段（已切分）"
-    )
-    metadatas: Optional[List[Dict[str, Any]]] = Field(
-        default=None, description="与 texts 对应的元数据"
-    )
-
-class UpsertResponse(BaseModel):
-    collection: str
-    count: int
-    ids: List[str]
+# ===== Memory 模块 =====
+class CreateReq(BaseModel):
+    app: str
+    params: Optional[Dict[str, Any]] = None
 
 
-# ===== 仅用于 .md/.txt 文件上传后的结果回执 =====
-class UploadTextResponse(BaseModel):
-    collection: str
-    filename: str
-    chunks: int
-    ids: List[str]
+class CreateResp(BaseModel):
+    memory_id: str
 
 
-# ===== 查询（向量检索 + 可选生成答案）=====
-class Hit(BaseModel):
-    id: str = Field(..., description="Weaviate 对象 UUID")
-    distance: float = Field(..., ge=0, description="向量距离（越小越相似）")
-    text: str = Field(..., description="命中的文本片段")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="写入时携带的元数据")
+class PushReq(BaseModel):
+    memory_id: str
+    app: str
+    url: str
+    description: Optional[str] = None
 
-class QueryRequest(BaseModel):
-    collection: Optional[str] = Field(
-        default=None, description="集合名；不传则用环境变量默认值"
-    )
-    query: str = Field(..., description="查询问题")
-    top_k: int = Field(default=5, ge=1, le=50, description="向量检索返回条数")
-    max_ctx_chunks: int = Field(
-        default=5, ge=1, le=20, description="用于生成答案的上下文片段上限"
-    )
-    return_answer: bool = Field(
-        default=True, description="是否在检索结果基础上调用 LLM 生成答案"
-    )
 
-class QueryResponse(BaseModel):
-    collection: str
+class PushResp(BaseModel):
+    status: str = "ok"
+    row: Dict[str, Any]
+
+
+class QueryReq(BaseModel):
+    memory_id: str
+    app: str
     query: str
-    top_k: int
-    hits: List[Hit]
-    answer: Optional[str] = Field(default=None, description="基于命中生成的答案；未生成则为 null")
 
 
-# ===== 维护类接口（可选）=====
-class DeleteCollectionRequest(BaseModel):
-    collection: str
-
-class DeleteCollectionResponse(BaseModel):
-    collection: str
-    deleted: bool
+class QueryResp(BaseModel):
+    answer: str
+    context_used: Dict[str, Any]
 
 
-# ===== 健康检查（可按需使用）=====
-class HealthzResponse(BaseModel):
-    status: str
-    version: Optional[str] = None
+class DeleteReq(BaseModel):
+    memory_id: str
+    app: str
+    url: str
+
+
+class DeleteResp(BaseModel):
+    status: str = "deleted"
+
+
+class ClearReq(BaseModel):
+    memory_id: str
+    app: str
+
+
+class ClearResp(BaseModel):
+    deleted: int
+
+
+# ===== 可选通用模型 =====
+class ErrorResp(BaseModel):
+    detail: str
+
+
+
+####################################
+class JDItem(BaseModel):
+    job_id: str
+    company: str
+    hash: Optional[str] = None
+    position: str
+    category: List[str] = []
+    department: Optional[str] = None
+    product: Optional[str] = None
+    location: List[str] = []
+    education: Optional[str] = None
+    experience: Optional[str] = None
+    requirements: str
+    description: str
+    extra: Dict[str, Optional[str]] = {}
