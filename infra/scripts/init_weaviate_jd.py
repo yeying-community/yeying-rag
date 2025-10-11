@@ -2,10 +2,10 @@
 """
 初始化 InterviewerJDKnowledge schema
 """
-# ===== Test 用，正常不加载 =====
-from dotenv import load_dotenv
-load_dotenv(override=False)
-# ===== Test 用，正常不加载 =====
+# # ===== Test 用，正常不加载 =====
+# from dotenv import load_dotenv
+# load_dotenv(override=False)
+# # ===== Test 用，正常不加载 =====
 
 import os
 import weaviate

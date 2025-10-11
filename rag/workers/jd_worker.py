@@ -10,10 +10,10 @@ JDWorker
 3. 下架删除：若 status == "expired" 自动删除
 4. 记录时间戳（publishDate、crawlerDate、vectorizedAt）
 """
-# ===== Test 用，正常不加载 =====
-from dotenv import load_dotenv
-load_dotenv(override=True)
-# ===== Test 用，正常不加载 =====
+# # ===== Test 用，正常不加载 =====
+# from dotenv import load_dotenv
+# load_dotenv(override=True)
+# # ===== Test 用，正常不加载 =====
 
 
 import os
