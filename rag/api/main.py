@@ -8,7 +8,7 @@ FastAPI 主应用
 
 from fastapi import FastAPI
 from rag.api.deps import get_settings
-from rag.api.routers import memory, debug
+from rag.api.routers import memory, debug, query
 
 
 def create_app() -> FastAPI:
@@ -29,6 +29,7 @@ def create_app() -> FastAPI:
     app.include_router(memory.router)
     app.include_router(debug.router)
 
+    app.include_router(query.router)
     return app
 
 
