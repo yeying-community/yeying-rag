@@ -8,6 +8,25 @@ Pydantic 数据模型 (schemas)
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
 
+# ===== 面试官应用（Interviewer 模块） =====
+class InterviewQueryReq(BaseModel):
+    """面试官场景：生成面试题请求"""
+    app: str = "interviewer"
+    memory_id: str
+    query: str
+    company: Optional[str] = None
+    target_position: Optional[str] = None
+    jd_top_k: int = 3
+    memory_top_k: int = 3
+    max_chars: int = 500
+
+
+class InterviewQueryResp(BaseModel):
+    """面试官场景：生成面试题响应"""
+    app: str = "interviewer"
+    questions: List[str]
+    context_used: Optional[Dict[str, Any]] = None
+
 
 # ===== Memory 模块 =====
 class CreateReq(BaseModel):
