@@ -10,10 +10,10 @@ JDWorker
 3. 下架删除：若 status == "expired" 自动删除
 4. 记录时间戳（publishDate、crawlerDate、vectorizedAt）
 """
-# # ===== Test 用，正常不加载 =====
-# from dotenv import load_dotenv
-# load_dotenv(override=True)
-# # ===== Test 用，正常不加载 =====
+# ===== Test 用，正常不加载 =====
+from dotenv import load_dotenv
+load_dotenv(override=True)
+# ===== Test 用，正常不加载 =====
 
 
 import os
@@ -203,11 +203,30 @@ class JDWorker:
                     jd_data["extra"] = {}
 
                 jd_data["extra"]["crawl_date"] = crawl_date
-                # ✅ 类型规范化
+                # 类型规范化
                 if isinstance(jd_data.get("job_id"), int):
                     jd_data["job_id"] = str(jd_data["job_id"])
                 if isinstance(jd_data.get("experience"), int):
                     jd_data["experience"] = str(jd_data["experience"])
+
+                # ✅ category: str → [str]
+                if isinstance(jd_data.get("category"), str):
+                    jd_data["category"] = [jd_data["category"]]
+                elif jd_data.get("category") is None:
+                    jd_data["category"] = []
+
+                # ✅ location: str → [str]
+                if isinstance(jd_data.get("location"), str):
+                    jd_data["location"] = [jd_data["location"]]
+                elif jd_data.get("location") is None:
+                    jd_data["location"] = []
+
+                # ✅ position: None → ""
+                if isinstance(jd_data.get("position"), list):
+                    jd_data["position"] = "、".join(jd_data["position"])
+                elif jd_data.get("position") is None:
+                    jd_data["position"] = ""
+
                 jd = JDItem(**jd_data)
 
                 self._upsert_one(jd, key, crawl_date)
@@ -220,4 +239,4 @@ class JDWorker:
 if __name__ == "__main__":
     worker = JDWorker()
     # 示例：同步 2025-10-07 阿里巴巴 JD
-    worker.sync_from_manifest("alibaba/20251007/manifest.json")
+    worker.sync_from_manifest("tencent/20251017/manifest.json")
