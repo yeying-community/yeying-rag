@@ -2,12 +2,12 @@
 """
 初始化 InterviewerJDKnowledge schema
 """
-# # ===== Test 用，正常不加载 =====
-# from dotenv import load_dotenv
-# load_dotenv(override=False)
-# # ===== Test 用，正常不加载 =====
+# ===== Test 用，正常不加载 =====
+from dotenv import load_dotenv
+load_dotenv(override=False)
+# ===== Test 用，正常不加载 =====
 
-import os
+import os,time
 import weaviate
 import weaviate.classes.config as wc
 from rag.datasource.connections.weaviate_connection import WeaviateConnection
@@ -25,13 +25,22 @@ def init_jd_collection():
 
     name = "InterviewerJDKnowledge"
 
-    try:
-        existing = client.collections.list_all()
-        if name in existing:
-            print(f"✅ Collection {name} 已存在")
-            return
-    except Exception:
-        pass
+    # ========== 延迟等待（Weaviate schema ready） ==========
+    # Weaviate 初始化时 list_all() 延迟返回 导致误判。
+    # 加上「延迟 + 异常兜底」后，幂等创建就会稳定工作。
+    for attempt in range(5):
+        try:
+            existing = client.collections.list_all()
+            if name in existing:
+                print(f"✅ Collection {name} 已存在（第 {attempt + 1} 次检查）")
+                return
+            break
+        except Exception as e:
+            print(f"⚠️ 第 {attempt + 1} 次尝试获取 schema 失败：{e}")
+            time.sleep(2)
+    else:
+        print("❌ 无法连接 Weaviate schema，跳过创建。")
+        return
 
     props = [
         wc.Property(name="job_id", data_type=wc.DataType.TEXT, description="岗位唯一ID"),
