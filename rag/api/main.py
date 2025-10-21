@@ -8,7 +8,7 @@ FastAPI 主应用
 
 from fastapi import FastAPI
 from rag.api.deps import get_settings
-from rag.api.routers import memory, debug, query
+from rag.api.routers import memory, debug, query, health
 
 
 def create_app() -> FastAPI:
@@ -21,13 +21,10 @@ def create_app() -> FastAPI:
     )
 
     # 健康检查
-    @app.get("/health")
-    def health_check():
-        return {"status": "ok", "service": settings.service_name}
-
+    app.include_router(health.router)
     # 挂载路由
     app.include_router(memory.router)
-    app.include_router(debug.router)
+    # app.include_router(debug.router)
 
     app.include_router(query.router)
     return app
