@@ -93,7 +93,7 @@ class JDWorker:
         """生成向量"""
         return self.embedder.embed_query(text)
 
-    def _exists_and_same_hash(self, job_id: str, new_hash: str) -> Optional[str]:
+    def _exists_and_same_hash(self, job_id: str) -> Optional[str]:
         """检查 Weaviate 中是否已存在该 JD，若存在返回旧 hash"""
         col = self.weaviate.client.collections.get(self.collection)
         res = col.query.fetch_objects(
@@ -128,7 +128,7 @@ class JDWorker:
             return
 
         # 增量检测
-        old_hash = self._exists_and_same_hash(jd.job_id, jd.hash)
+        old_hash = self._exists_and_same_hash(jd.job_id)
         if old_hash and old_hash == jd.hash:
             print(f"⏭ 未变化 job_id={jd.job_id}（hash 一致），跳过")
             return
@@ -161,23 +161,32 @@ class JDWorker:
 
         col = self.weaviate.client.collections.get(self.collection)
 
-        # replace / insert 逻辑
-        if old_hash and old_hash != jd.hash:
-            # hash 变化：执行 replace
-            res = col.query.fetch_objects(
-                filters=Filter.by_property("job_id").equal(str(jd.job_id)),
-                limit=1,
-                return_properties=["_id"]
-            )
-            if res.objects:
-                uid = str(res.objects[0].uuid)
-                col.data.replace(uuid=uid, properties=props, vector=vector)
-                print(f"♻️ 已更新 job_id={jd.job_id}（内容变化）")
-                return
+        # 如果hash变化，则进行更新（replace）
+        if old_hash != jd.hash:
+            try:
+                # 查询现有记录是否存在，并确保返回uuid
+                res = col.query.fetch_objects(
+                    filters=Filter.by_property("job_id").equal(str(jd.job_id)),
+                    limit=1,
+                    return_properties=["job_id"]  # 确保返回
+                )
 
-        # 新增
-        col.data.insert(properties=props, vector=vector)
-        print(f"✅ 已入库 job_id={jd.job_id} - {jd.position}")
+                # 如果找到记录，执行替换操作
+                if res.objects:
+                    uuid = str(res.objects[0].uuid)  # 获取现有记录的uuid
+                    col.data.replace(uuid=uuid, properties=props, vector=vector)  # 使用 uuid 进行 replace
+                    print(f"♻️ 已更新 job_id={jd.job_id}（内容变化）")
+                else:
+                    # 如果没有找到记录，则插入新记录
+                    print(f"⚠️ job_id={jd.job_id} 不存在，执行插入操作")
+                    col.data.insert(properties=props, vector=vector)
+                    print(f"✅ 已入库 job_id={jd.job_id} - {jd.position}")
+
+            except Exception as e:
+                print(f"⚠️ 更新或插入操作失败: {e}")
+        else:
+            # 如果数据没有变化，则跳过
+            print(f"⏭ 数据未变化，跳过更新 job_id={jd.job_id}")
 
     # ===================== Manifest 批量同步 =====================
 
@@ -239,4 +248,4 @@ class JDWorker:
 if __name__ == "__main__":
     worker = JDWorker()
     # 示例：同步 2025-10-07 阿里巴巴 JD
-    worker.sync_from_manifest("tencent/20251017/manifest.json")
+    worker.sync_from_manifest("tencent/20251024/manifest.json")
