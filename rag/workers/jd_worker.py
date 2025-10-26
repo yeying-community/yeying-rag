@@ -93,7 +93,7 @@ class JDWorker:
         """生成向量"""
         return self.embedder.embed_query(text)
 
-    def _exists_and_same_hash(self, job_id: str, new_hash: str) -> Optional[str]:
+    def _exists_and_same_hash(self, job_id: str) -> Optional[str]:
         """检查 Weaviate 中是否已存在该 JD，若存在返回旧 hash"""
         col = self.weaviate.client.collections.get(self.collection)
         res = col.query.fetch_objects(
@@ -128,7 +128,7 @@ class JDWorker:
             return
 
         # 增量检测
-        old_hash = self._exists_and_same_hash(jd.job_id, jd.hash)
+        old_hash = self._exists_and_same_hash(jd.job_id)
         if old_hash and old_hash == jd.hash:
             print(f"⏭ 未变化 job_id={jd.job_id}（hash 一致），跳过")
             return
@@ -162,7 +162,7 @@ class JDWorker:
         col = self.weaviate.client.collections.get(self.collection)
 
         # 如果hash变化，则进行更新（replace）
-        if old_hash and old_hash != jd.hash:
+        if old_hash != jd.hash:
             try:
                 # 查询现有记录是否存在，并确保返回uuid
                 res = col.query.fetch_objects(
