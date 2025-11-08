@@ -109,87 +109,204 @@ class RAGPipeline:
             self,
             memory_id: str,
             app: str,
-            query: str,
+            resume_url: str | None = None,
+            jd_id: str | None = None,
             company: str | None = None,
             target_position: str | None = None,
-            jd_top_k: int = 3,
+            jd_top_k: int = 1,
             memory_top_k: int = 3,
             max_chars: int = 500,
     ):
         """
-        面试官场景：结合候选人信息 + JD 库内容生成面试题目（不含答案）
+        面试官场景（改进版）：
+        ------------------------------------------------
+        基于候选人简历 + 岗位JD + 历史上下文，
+        分三步生成三类问题（基础题 / 项目题 / 场景题），
+        各自独立调用 LLM，再汇总成9道高质量面试题。
         """
-        # 1️⃣ 获取记忆上下文
+
+        # 1️⃣ 拉取候选人简历内容
+        resume_data = {}
+        if resume_url:
+            try:
+                resume_text = self.ds.minio.get_text(resume_url)
+                resume_data = json.loads(resume_text)
+            except Exception as e:
+                resume_data = {"error": f"读取简历失败: {str(e)}"}
+
+        # 2️⃣ 获取记忆上下文
         ctx = self.memory.get_context(
             memory_id=memory_id,
             app=app,
-            query=query,
+            query=target_position or "面试生成",
             recent_k=memory_top_k,
             summary_k=1
         )
-
         texts = []
         texts.extend(self._fetch_texts(ctx.get("summary_urls", [])))
         texts.extend(self._fetch_texts(ctx.get("recent_urls", [])))
-
         for hit in ctx.get("retrieved", []):
             texts.append(hit["content"])
-
         context = "\n\n".join(texts)[:max_chars]
 
-        # 2️⃣ JD 库检索（可按公司/岗位过滤）
-        retriever = JDRetriever(collection="InterviewerJDKnowledge", company=company)
-        jd_hits = retriever.search(target_position or query, top_k=jd_top_k)
-        jd_context = "\n".join([
-            f"公司：{h['company']} 职位：{h['position']}\n要求：{h['requirements']}\n描述：{h['description']}"
-            for h in jd_hits
-        ])[:max_chars]
+        # 3️⃣ 获取 JD 内容（优先用户上传的 JD）
+        jd_context = ""
+        if jd_id:
+            try:
+                row = self.ds.uploaded_jd.get(jd_id, memory_id)
+                print("row:", row)
+                if row:
+                    company = row.get("company") or company  # ✅ 自动覆盖
+                    target_position = row.get("position") or target_position
+                    jd_context = row.get("content") or ""
+                    print(f"✅ 使用用户上传的JD：{jd_id} ({company or ''} - {target_position or ''})")
+                else:
+                    jd_context = "[未找到上传的JD]"
+                    print(f"⚠️ 未找到 jd_id={jd_id} 对应JD记录，回退至JD库检索。")
+                    retriever = JDRetriever(collection="InterviewerJDKnowledge", company=company)
+                    jd_hits = retriever.search(target_position or "通用面试", top_k=jd_top_k)
+                    jd_context = "\n".join([
+                        f"岗位要求：{h['requirements']}\n描述：{h['description']}"
+                        for h in jd_hits
+                    ])[:max_chars]
+            except Exception as e:
+                print(f"⚠️ 读取用户上传JD失败: {e}")
+                jd_context = f"[JD读取失败: {e}]"
+        else:
+            # 🔁 原逻辑：JD向量库检索
+            print("# 🔁 原逻辑：JD向量库检索")
+            retriever = JDRetriever(collection="InterviewerJDKnowledge", company=company)
+            jd_hits = retriever.search(target_position or "通用面试", top_k=jd_top_k)
+            jd_context = "\n".join([
+                f"岗位要求：{h['requirements']}\n描述：{h['description']}"
+                for h in jd_hits
+            ])[:max_chars]
 
-        # 3️⃣ 拼提示词
-        prompt = f"""
-        你是资深面试官助手，请结合候选人信息与岗位要求，为面试官生成面试题目。
-        注意：
-        - 只输出问题，不要写答案；
-        - 每个问题应体现岗位核心能力；
-        - 若有目标岗位，请优先参考 JD 的要求；
-        - 若信息不足，请给出通用技术问题；
-        - 最终输出格式必须严格为 JSON 对象，字段名为 "questions"，其值为字符串数组。
 
-        输出示例：
+        # 4️⃣ 通用基础信息块
+        base_info = f"""
+    职位：{resume_data.get('position', '')}
+    技能：{', '.join(resume_data.get('skills', []))}
+    项目经历：
+    {chr(10).join(resume_data.get('projects', []))}
+
+    历史面试上下文：
+    {context}
+
+    岗位信息（JD）：
+    {jd_context}
+    """
+
+        # ---------------------------------------------------------------------
+        # 5️⃣ 三类题型 Prompt 构造
+        # ---------------------------------------------------------------------
+
+        # (1) 基础知识与技能题
+        basic_prompt = f"""
+    你是一名资深技术面试官，请根据候选人简历中的技能列表，
+    生成三道基础知识与技能类面试题。
+
+    要求：
+    - 每题必须直接基于候选人简历中提到的具体技术（如 SpringBoot、Redis、Kafka、Flink、Docker、MyBatis、WebSocket 等）；
+    - 考察候选人对技术原理、架构设计、性能优化的理解；
+    - 问题应具体、有深度；
+    - 严格输出 JSON 格式，字段名为 "questions"。
+    
+    【候选人信息】
+    {base_info}
+    
+    【输出示例】
         {{
           "questions": [
-            "请你介绍一次在推荐系统中使用强化学习的经历。",
-            "在模型训练中，你如何平衡精度和性能？",
-            "请谈谈样本不平衡问题的应对策略。"
+            "在你熟悉的 SpringBoot 技术栈中，系统如何同时集成 Redis、Kafka 和 RabbitMQ？请详细说明，在高并发下的消息一致性与事务保障机制",
+            ...
           ]
         }}
+    """
 
-        【候选人与上下文】
-        {context}
+        # (2) 项目经验题
+        project_prompt = f"""
+    你是一名资深系统架构面试官，请仔细阅读候选人简历中的项目经历，
+    针对每个项目生成一到两道深入挖掘项目细节的面试题，一共三道题。
 
-        【岗位信息（JD）】
-        {jd_context}
+    要求：
+    - 每题必须引用项目名称；
+    - 明确考察候选人项目中的设计思路、技术实现、性能优化或系统稳定性；
+    - 优先结合简历中出现的具体技术（如 Flink、Kafka、Redis、WebSocket 等）；
+    - 问题要足够详细、具体；
+    - 严格输出 JSON 格式。
 
-        【面试官请求】
-        {query}
+    【候选人项目经历】
+    {base_info}
+    
+    【输出示例】
+        {{
+          "questions": [
+            "在你负责的“智慧营销作业平台”项目中，你提到使用了 Flink 与 Kafka 进行实时数据流处理。请详细说明该系统的流式架构设计",
+            ...
+        ]
+        }}
+    """
 
-        请生成3~5个面试题，并严格输出为 JSON 格式：
-        """
+        # (3) 场景分析题
+        scenario_prompt = f"""
+    你是一名企业技术面试官，请根据岗位描述（JD）与候选人简历信息，
+    生成三道场景分析题，用于考察候选人应对实际问题的能力。
 
-        # 4️⃣ 调 LLM
-        result = self.llm.complete(
-            prompt,
-            temperature=0.5,
-            max_tokens=800,
-            system="你是面试官助手，只输出题目，不解释或回答。"
-        )
+    要求：
+    - 每题描述一个真实业务场景,业务场景要足够详细清晰，让候选人分析问题与解决方案；
+    - 问题应结合候选人项目背景与技术栈；
+    - 严格输出 JSON 格式。
+
+    【岗位信息（JD）】
+    {jd_context}
+
+    【候选人简历摘要】
+    {base_info}
+    
+    【输出示例】
+        {{
+          "questions": [
+            "假设你在“企业智能客服平台”项目中遇到如下场景：系统每日处理上百万次用户消息请求；WebSocket 长连接频繁断开；Redis 缓存命中率降低，响应时间上升。请分析：可能的性能瓶颈来源；如何在服务端架构上改进（包括连接管理、缓存策略与异步任务设计）；",
+            ...
+          ]
+        }}
+    """
+
+        # ---------------------------------------------------------------------
+        # 6️⃣ 三次独立调用 LLM
+        # ---------------------------------------------------------------------
+        def _ask_llm(prompt, temperature=0.4, max_tokens=600):
+            return self._extract_questions(
+                self.llm.complete(
+                    prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    system="你是一名面试官助手，只输出JSON格式的题目，不解释。"
+                )
+            )
+
+        basic_questions = _ask_llm(basic_prompt, temperature=0.3)
+        project_questions = _ask_llm(project_prompt, temperature=0.5)
+        scenario_questions = _ask_llm(scenario_prompt, temperature=0.6)
+
+        # ---------------------------------------------------------------------
+        # 7️⃣ 汇总结果
+        # ---------------------------------------------------------------------
+        all_questions = basic_questions + project_questions + scenario_questions
+        all_questions = [q for q in all_questions if q.strip()]  # 清理空项
 
         return {
-        "questions": self._extract_questions(result),
-        "context_used": {
-            "memory_context": ctx,
-            "jd_context_preview": jd_context[:500]
-    }}
+            "questions": all_questions[:9],
+            "context_used": {
+                "memory_context": ctx,
+                "jd_context_preview": jd_context[:500],
+                "resume_url": resume_url,
+                "num_basic": len(basic_questions),
+                "num_project": len(project_questions),
+                "num_scenario": len(scenario_questions)
+            }
+        }
 
     def _extract_questions(self, text: str) -> list[str]:
         """解析 LLM 输出为题目列表（支持 JSON + 文本两种格式）"""

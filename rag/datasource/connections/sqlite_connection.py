@@ -76,6 +76,19 @@ CREATE TABLE IF NOT EXISTS mem_primary (
   created_at         TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at         TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS user_uploaded_jd (
+  jd_id       TEXT PRIMARY KEY,                -- JD 唯一标识 UUID
+  memory_id   TEXT NOT NULL,                   -- 所属会话或用户ID
+  company     TEXT,                            -- 公司名称（可选）
+  position    TEXT,                            -- 职位名称（可选）
+  content     TEXT NOT NULL,                   -- JD原文（文本或JSON）
+  uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_uploaded_jd_memory
+  ON user_uploaded_jd (memory_id, uploaded_at DESC);
 """
 
 # ---------- SQLite 封装 ----------

@@ -21,6 +21,7 @@ from rag.datasource.objectstores.minio_store import MinIOStore
 
 # Vector store
 from rag.datasource.connections.weaviate_connection import WeaviateConnection
+from rag.datasource.sqlstores.uploaded_jd_store import UploadedJDStore
 from rag.datasource.vectorstores.weaviate_store import WeaviateStore
 
 
@@ -33,6 +34,7 @@ class Datasource:
         self.mem_primary = MemPrimaryStore(self.sqlite_conn)
         self.mem_registry = MemRegistryStore(self.sqlite_conn)
         self.mem_deleted = MemDeletedStore(self.sqlite_conn)
+        self.uploaded_jd = UploadedJDStore(self.sqlite_conn)
 
         # ---------- MinIO ----------
         if os.getenv("MINIO_ENABLED", "false").lower() == "true":
