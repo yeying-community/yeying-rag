@@ -13,10 +13,11 @@ class InterviewQueryReq(BaseModel):
     """面试官场景：生成面试题请求"""
     app: str = "interviewer"
     memory_id: str
-    query: str
+    resume_url: Optional[str] = None
+    jd_id: Optional[str] = None
     company: Optional[str] = None
     target_position: Optional[str] = None
-    jd_top_k: int = 3
+    jd_top_k: int = 2
     memory_top_k: int = 3
     max_chars: int = 500
 
@@ -27,6 +28,15 @@ class InterviewQueryResp(BaseModel):
     questions: List[str]
     context_used: Optional[Dict[str, Any]] = None
 
+class UploadJDReq(BaseModel):
+    app: str
+    memory_id: str
+    company: Optional[str] = None
+    position: Optional[str] = None
+    content: str
+
+class UploadResp(BaseModel):
+    jd_id: str
 
 # ===== Memory 模块 =====
 class CreateReq(BaseModel):
@@ -53,7 +63,7 @@ class PushResp(BaseModel):
 class QueryReq(BaseModel):
     memory_id: str
     app: str
-    query: str
+    query: Optional[str] = None
 
 
 class QueryResp(BaseModel):
